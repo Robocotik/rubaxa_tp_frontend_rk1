@@ -10,13 +10,13 @@ function parallel(tasks, onAllResolved) {
   }
 
   tasks.forEach((task, index) => {
-    if (task.length === 0) {
+    if (task.length === 0) { // потенциально тяжелые вычисления выносим в macro таски, чтобы не стопать основной поток
       setTimeout(() => {
         results[index] = task();
         completed++;
         if (completed === tasks.length) onAllResolved(results);
       }, 0);
-    } else {
+    } else { // callback либо sync, либо async
       task(result => {
         results[index] = result;
         completed++;
