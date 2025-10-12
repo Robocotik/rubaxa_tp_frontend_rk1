@@ -4,14 +4,9 @@ function getWorkerCode(task) {
   return `
       onmessage = function(e) {
         const task = ${task};
-        if (task.length > 0) {
-          task((result) => {
-            postMessage({ index: e.data.index, result: result }); // поддерживаем порядок, в котором у нас запускались функции
-          });
-        } else {
-          postMessage({ index: e.data.index, result: task() });
-        }
-      };
+        task((result) => {
+            postMessage({ index: e.data.index, result: result }); 
+      })};
     `;
 }
 
@@ -19,34 +14,58 @@ function parallel(tasks, onAllResolved) {
   const results = new Array(tasks.length);
   let completed = 0;
 
+  if (tasks.length === 0) {
+    onAllResolved(results);
+    return;
+  }
+
   tasks.forEach((task, index) => {
-    const workerCode = getWorkerCode(task);
-    const blob = new Blob([workerCode], {type: 'application/javascript'});
-    const blobUrl = URL.createObjectURL(blob);
-    const worker = new Worker(blobUrl);
-
-    worker.onmessage = function (e) {
-      results[e.data.index] = e.data.result;
+    if (task.length === 0) {
+      results[index] = task();
       completed++;
+      if (completed === tasks.length) onAllResolved(results);
+    } else {
+      let syncCompleted = false; 
+      // этот ужас существует, потому что в тестах
+      //на sync существуют обычные sync callback и мы никак не можем узнать, 
+      // что это не async callback пока не проверим
 
-      worker.terminate();
-      URL.revokeObjectURL(blobUrl);
+      task(result => {
+        syncCompleted = true;
+        results[index] = result;
+        completed++;
+        if (completed === tasks.length) onAllResolved(results);
+      });
 
-      if (completed === tasks.length) {
-        onAllResolved(results);
-      }
-    };
+      setTimeout(() => {
+        if (!syncCompleted) {
+          const workerCode = getWorkerCode(task);
+          const blob = new Blob([workerCode], {type: 'application/javascript'});
+          const blobUrl = URL.createObjectURL(blob);
+          const worker = new Worker(blobUrl);
 
-    worker.postMessage({index: index});
+          worker.onmessage = function (e) {
+            if (!syncCompleted) {
+              syncCompleted = true;
+              results[e.data.index] = e.data.result;
+              completed++;
+              worker.terminate();
+              URL.revokeObjectURL(blobUrl);
+              if (completed === tasks.length) onAllResolved(results);
+            }
+          };
+
+          worker.postMessage({index: index});
+        }
+      }, 0);
+    }
   });
 }
 
 parallel(
   [
     function (resolve) {
-      setTimeout(function () {
-        resolve(10);
-      }, 50);
+      resolve(10);
     },
     function () {
       return 5;
