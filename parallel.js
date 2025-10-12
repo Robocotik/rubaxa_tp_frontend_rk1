@@ -11,17 +11,17 @@ function parallel(tasks, onAllResolved) {
 
   tasks.forEach((task, index) => {
     if (task.length === 0) {
-      results[index] = task();
-      completed++;
-      if (completed === tasks.length) onAllResolved(results);
-    } else {
-      setTimeout(() => { // у нас может быть как sync так и async callback, так что обоих оборачиваем в setTimeout(код,0)
-        task(result => {
-          results[index] = result;
-          completed++;
-          if (completed === tasks.length) onAllResolved(results);
-        });
+      setTimeout(() => {
+        results[index] = task();
+        completed++;
+        if (completed === tasks.length) onAllResolved(results);
       }, 0);
+    } else {
+      task(result => {
+        results[index] = result;
+        completed++;
+        if (completed === tasks.length) onAllResolved(results);
+      });
     }
   });
 }
